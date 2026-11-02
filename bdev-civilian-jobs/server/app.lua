@@ -26,13 +26,7 @@ local function overview(src)
                 ratingCount = count or 0,
                 active = s ~= nil and s.job == id,
                 onDuty = #CJ.onDuty(id),
-                requests = job.requests and {
-                    label = job.requests.label,
-                    description = job.requests.description,
-                    price = job.requests.price,
-                    npcPrice = job.requests.npcPrice,
-                    needsVehicle = job.requests.needsVehicle,
-                } or nil,
+                requests = job.requests and CJ.publicRequestInfo(job.requests) or nil,
             }
         end
     end

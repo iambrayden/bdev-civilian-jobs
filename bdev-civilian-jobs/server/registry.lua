@@ -35,13 +35,27 @@ function CJ.publicJob(job)
         enabled = CJ.isEnabled(job.id),
         depot = { coords = job.depot.coords, ped = job.depot.ped, blip = job.depot.blip },
         vehicle = job.vehicle and { label = job.vehicle.label, deposit = job.vehicle.deposit } or nil,
-        requests = r and {
-            label = r.label,
-            description = r.description,
-            price = r.price,
-            npcPrice = r.npcPrice,
-            needsVehicle = r.needsVehicle,
-        } or nil,
+        resource = job.resource,
+        requests = r and CJ.publicRequestInfo(r) or nil,
+    }
+end
+
+function CJ.publicRequestInfo(r)
+    local types
+    if r.types then
+        types = {}
+        for _, t in ipairs(r.types) do
+            types[#types + 1] = { id = t.id, label = t.label, description = t.description, price = t.price, npcPrice = t.npcPrice, needsVehicle = t.needsVehicle }
+        end
+    end
+    return {
+        label = r.label,
+        description = r.description,
+        price = r.price,
+        npcPrice = r.npcPrice,
+        needsVehicle = r.needsVehicle,
+        context = r.context,
+        types = types,
     }
 end
 
@@ -69,6 +83,14 @@ local function validate(def)
     if r ~= nil then
         if type(r) ~= 'table' or type(r.price) ~= 'number' or r.price < 0 then return 'requests.price must be a number' end
         if r.npcPrice ~= nil and type(r.npcPrice) ~= 'number' then return 'requests.npcPrice must be a number' end
+        if r.types ~= nil then
+            if type(r.types) ~= 'table' or #r.types == 0 then return 'requests.types must be a list' end
+            for _, t in ipairs(r.types) do
+                if type(t.id) ~= 'string' or type(t.label) ~= 'string' or type(t.price) ~= 'number' then
+                    return 'each request type needs id, label and price'
+                end
+            end
+        end
     end
     return nil
 end
@@ -95,6 +117,17 @@ function CJ.registerJob(def, resource)
         def.requests.label = def.requests.label or def.label
         def.requests.bonus = def.requests.bonus or 0
         def.requests.needsVehicle = def.requests.needsVehicle == true
+        -- the cheapest type is what menus show as "from" price
+        if def.requests.types then
+            local low, lowNpc
+            for _, t in ipairs(def.requests.types) do
+                t.needsVehicle = t.needsVehicle == true
+                if not low or t.price < low then low = t.price end
+                if t.npcPrice and (not lowNpc or t.npcPrice < lowNpc) then lowNpc = t.npcPrice end
+            end
+            def.requests.price = low
+            def.requests.npcPrice = lowNpc
+        end
     end
 
     CJ.Jobs[def.id] = def

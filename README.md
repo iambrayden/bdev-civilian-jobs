@@ -8,8 +8,9 @@ It's one **base resource** plus one **add-on resource per job**. Staff can turn 
 |---|---|
 | `bdev-civilian-jobs` | The base: Job Center, depots, rental vehicles and deposits, pay, XP and levels, player service requests with NPC fallback, ratings, the minigame kit, the **Gigs** phone app, and `/civjobs` on/off |
 | `bdev-cj-roadside` | **Roadside Assistance**: flats, jump starts, fuel, coolant, engine, body and rollovers. Player call-outs plus NPC calls, and an NPC mechanic when nobody is on duty |
-
-Planned add-ons on the same base: **Bus Driver**, **Locksmith** (including qs-housing lockouts) and **Repo Agent** (NPC cases only).
+| `bdev-cj-locksmith` | **Locksmith**: car and house lockouts, lock changes, stuck safes and key cutting. Players call for a car lockout (ownership checked, keys go to the owner), a house lockout (qs-housing, lets the owner in) or a spare key. NPC locksmith when nobody is on duty |
+| `bdev-cj-bus` | **Bus Driver**: timetabled routes unlocked by level, stopping on the mark, doors, NPC passengers who pay cash (make change) or show a pass (spot fakes), ride-quality rating. Real players can wait at a stop, ride, pay the fare and ring the bell |
+| `bdev-cj-repo` | **Repo Agent**: NPC repossession cases. Search area, witnesses who may lie, a plate reader, slim jim + hotwire or strap to the flatbed, owners who show up to argue, pay up or fight |
 
 ![Gigs app](docs/screenshots/app-shift.png)
 
@@ -25,7 +26,11 @@ Planned add-ons on the same base: **Bus Driver**, **Locksmith** (including qs-ho
    ```
    ensure bdev-civilian-jobs
    ensure bdev-cj-roadside
+   ensure bdev-cj-locksmith
+   ensure bdev-cj-bus
+   ensure bdev-cj-repo
    ```
+   Leave out any job you don't want, or keep it installed and switch it off with `/civjobs`.
    Always start the base before the add-ons.
 3. Start the server. The `civjobs_stats` table is created automatically (or run `bdev-civilian-jobs/sql/install.sql`).
 4. Check the coordinates in each add-on's `config.lua` (depot, vehicle spawns, call spots) and adjust them to your map. `/civjobs pos` copies your position as a `vec4(...)`.
@@ -49,6 +54,11 @@ In-game choices are saved (resource KVP) and override `config.lua` until you run
 | `/jobqueue` | On-duty workers: see and accept open player requests |
 | `/quitjob` | End your shift anywhere (the deposit only comes back if the vehicle is at the depot) |
 | `/gigsapp` | Re-register the Gigs app with the phone and print the result in F8 |
+| `/busroute` | Bus drivers: pick a route (also on the bus itself) |
+| `/waitbus` or the bus stop target | Wait for a bus. Pay the fare when you sit down, ring the bell with **G** |
+| `/repocase` | Repo agents: read the case file. Scan plates from the flatbed with **J** |
+
+**Locksmith house lockouts** use qs-housing (`getCurrentHouse`, `GetPlayerHouses`, `enterHouse`). The adapter functions are in `bdev-cj-locksmith/config.lua` (`Config.Housing`) if you use another housing script. Car lockouts check `player_vehicles` ownership (`Config.OwnsVehicle`).
 
 ## How player requests work
 

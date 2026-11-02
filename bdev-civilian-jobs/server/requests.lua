@@ -56,6 +56,10 @@ local function fullRequest(r)
         note = r.note,
         status = r.status,
         worker = r.worker,
+        type = r.type,
+        typeLabel = r.typeLabel,
+        context = r.context,
+        info = r.info,
     }
 end
 
@@ -67,7 +71,8 @@ function CJ.publicRequest(r, viewer)
         id = r.id,
         job = r.job,
         jobLabel = job and job.label or r.job,
-        label = job and job.requests and job.requests.label or r.job,
+        label = r.typeLabel or (job and job.requests and job.requests.label) or r.job,
+        type = r.type,
         status = r.status,
         price = r.price,
         age = os.time() - r.createdAt,
@@ -133,7 +138,7 @@ local function startNpc(r)
     r.npcAt = os.time()
     r.worker, r.workerCid, r.workerName = nil, nil, nil
     CJ.phoneNotify(r.requester, job.label,
-        ('Nobody was available, so an NPC %s is on the way (%s).'):format(job.requests.label:lower(), CJ.money(r.price)), 'inform')
+        ('Nobody was available, so an NPC is on the way for "%s" (%s).'):format(r.typeLabel or job.requests.label, CJ.money(r.price)), 'inform')
     TriggerEvent('bdev-civilian-jobs:server:npcRequest', r.job, fullRequest(r))
     notifyWorkers(r.job)
 end
@@ -141,7 +146,7 @@ end
 --- Switches an unanswered request to an NPC, charging the price difference.
 local function tryNpc(r)
     local job = CJ.Jobs[r.job]
-    local npcPrice = job and job.requests.npcPrice
+    local npcPrice = job and r.npcPrice
     if not npcPrice or not GetPlayerName(r.requester) then return false end
     local extra = npcPrice - r.price
     if extra > 0 then
@@ -164,7 +169,19 @@ end
 --------------------------------------------------------------------------------
 -- Player actions
 --------------------------------------------------------------------------------
-function CJ.createRequest(src, jobId, note)
+--- The request type (job.requests.types entry) or the job's single request.
+local function requestType(job, typeId)
+    local rq = job.requests
+    if rq.types then
+        for _, t in ipairs(rq.types) do
+            if t.id == typeId then return t end
+        end
+        return nil
+    end
+    return { id = 'default', label = rq.label, price = rq.price, npcPrice = rq.npcPrice, needsVehicle = rq.needsVehicle }
+end
+
+function CJ.createRequest(src, jobId, note, typeId, context)
     local job = serviceJob(jobId)
     if not job then return false, 'That service is not available.' end
     if CJ.activeRequestOf(src) then return false, 'You already have an open request. Cancel it first.' end
@@ -173,9 +190,11 @@ function CJ.createRequest(src, jobId, note)
     local player = CJ.getPlayer(src)
     if not player then return false end
     local rq = job.requests
+    local t = requestType(job, typeId)
+    if not t then return false, 'Pick what you need help with.' end
 
     local netId, plate
-    if rq.needsVehicle then
+    if t.needsVehicle then
         local veh = CJ.playerVehicle(src, 6.0)
         if not veh then return false, 'Stand next to the vehicle that needs help.' end
         netId = NetworkGetNetworkIdFromEntity(veh)
@@ -189,11 +208,25 @@ function CJ.createRequest(src, jobId, note)
         end
     end
 
+    -- the job's own checks (ownership, location ...), done by the add-on that owns it
+    local info
+    if rq.validate then
+        local ok, res, extra = pcall(function()
+            return exports[job.resource][rq.validate](src, t.id, context, netId)
+        end)
+        if not ok then
+            print(('^1[civjobs] %s:%s errored: %s^0'):format(job.resource, rq.validate, tostring(res)))
+            return false, 'That service is not available right now.'
+        end
+        if not res then return false, extra or 'You can\'t request that here.' end
+        info = type(extra) == 'table' and extra or nil
+    end
+
     local npc = #CJ.onDuty(jobId) == 0
-    if npc and not rq.npcPrice then
+    if npc and not t.npcPrice then
         return false, ('Nobody is working as %s right now. Try again later.'):format(job.label)
     end
-    local price = npc and rq.npcPrice or rq.price
+    local price = npc and t.npcPrice or t.price
     local acc = CJ.charge(src, price, 'civjobs-request-' .. jobId)
     if not acc then return false, ('You need %s for this service.'):format(CJ.money(price)) end
 
@@ -208,6 +241,11 @@ function CJ.createRequest(src, jobId, note)
         netId = netId,
         plate = plate,
         price = price,
+        npcPrice = t.npcPrice,
+        type = t.id,
+        typeLabel = t.label,
+        context = context,
+        info = info,
         charges = { { account = acc, amount = price } },
         note = type(note) == 'string' and note ~= '' and note:sub(1, 120) or nil,
         createdAt = os.time(),
@@ -222,8 +260,8 @@ function CJ.createRequest(src, jobId, note)
             'success', job.label)
         for _, w in ipairs(CJ.onDuty(jobId)) do
             local d = math.floor(#(CJ.playerCoords(w) - r.coords))
-            CJ.phoneNotify(w, job.label, ('New request from %s, %dm away. Open Gigs or /%s to accept.'):format(
-                r.requesterName, d, Config.Requests.queueCommand), 'inform')
+            CJ.phoneNotify(w, job.label, ('%s: %s, %dm away. Open Gigs or /%s to accept.'):format(
+                r.requesterName, r.typeLabel, d, Config.Requests.queueCommand), 'inform')
         end
         notifyWorkers(jobId)
     end
@@ -425,8 +463,9 @@ end
 --------------------------------------------------------------------------------
 -- Callbacks (used by the Gigs app and the /service + /jobqueue menus)
 --------------------------------------------------------------------------------
-lib.callback.register('bdev-civilian-jobs:request:create', function(src, jobId, note)
-    return CJ.createRequest(src, jobId, note)
+lib.callback.register('bdev-civilian-jobs:request:create', function(src, jobId, note, typeId, context)
+    if context ~= nil and type(context) ~= 'table' then context = nil end
+    return CJ.createRequest(src, jobId, note, typeId, context)
 end)
 
 lib.callback.register('bdev-civilian-jobs:request:cancel', function(src)

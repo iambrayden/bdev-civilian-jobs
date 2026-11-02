@@ -33,7 +33,7 @@ RegisterNUICallback('app:endShift', function(_, cb)
 end)
 
 RegisterNUICallback('app:request', function(data, cb)
-    cb(result(proxy('request:create', data.job, data.note)))
+    cb(result(CJ.sendRequest(data.job, data.type, data.note)))
 end)
 
 RegisterNUICallback('app:cancel', function(_, cb)

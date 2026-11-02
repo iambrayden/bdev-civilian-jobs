@@ -152,3 +152,61 @@ svg.lines line { stroke-width: 5; stroke-linecap: round; }
 /* ---------- tension ---------- */
 .progress { height: 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); overflow: hidden; margin-top: 14px; }
 .progress > div { height: 100%; width: 0; background: var(--good); }
+
+/* ---------- pins ---------- */
+.pins { position: relative; display: flex; justify-content: center; gap: 12px; height: 170px; padding-top: 70px;
+    background: linear-gradient(180deg, #1c2230 0 50%, #141924 50% 100%); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+.shear { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--good); top: 134px; transition: transform .1s; }
+.pin-col { position: relative; width: 40px; height: 100px; border-radius: 8px; cursor: pointer; display: flex; justify-content: center; align-items: flex-end; }
+.pin-col.sel { background: rgba(245, 165, 36, .12); box-shadow: inset 0 0 0 2px var(--accent); }
+.pin { display: flex; flex-direction: column; align-items: center; width: 18px; margin-bottom: 4px; }
+.pin .driver { width: 18px; height: 42px; border-radius: 4px 4px 0 0; background: linear-gradient(90deg, #8b96aa, #d6dbe5, #8b96aa); }
+.pin .key { width: 18px; height: 32px; border-radius: 0 0 9px 9px; background: linear-gradient(90deg, #b8862c, #f5c66b, #b8862c); }
+.pin-col.set .driver { background: linear-gradient(90deg, #0f9d68, #5ee7b1, #0f9d68); }
+.pin.shudder { animation: shudder .09s infinite; }
+@keyframes shudder { 50% { margin-left: 3px; } }
+
+/* ---------- slim jim ---------- */
+canvas.jim { width: 100%; border-radius: 12px; border: 1px solid var(--border); cursor: crosshair; display: block; }
+
+/* ---------- dial ---------- */
+.dial-wrap { display: flex; gap: 26px; align-items: center; justify-content: center; }
+.dial { position: relative; width: 180px; height: 180px; }
+.dial-face { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, #2b3242 0 30%, #1a1f2b 31% 100%); border: 4px solid #0b0e14; transition: transform .06s linear; }
+.tick { position: absolute; left: 50%; top: 0; width: 2px; height: 50%; margin-left: -1px; transform-origin: 50% 100%; }
+.tick::before { content: ''; position: absolute; top: 4px; left: 0; width: 2px; height: 7px; background: #5b6579; }
+.tick.big::before { height: 12px; background: #c9ced8; }
+.tick span { position: absolute; top: 18px; left: -8px; width: 18px; text-align: center; font-size: 10px; color: var(--muted); }
+.dial-mark { position: absolute; left: 50%; top: -10px; margin-left: -7px; border: 7px solid transparent; border-top: 12px solid var(--accent); }
+.dial-side { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-size: 13px; color: var(--muted); min-width: 150px; }
+.light { width: 18px; height: 18px; border-radius: 50%; background: var(--good); opacity: .12; box-shadow: 0 0 16px var(--good); }
+.combo { font-weight: 700; color: var(--text); letter-spacing: 1px; }
+
+/* ---------- key cutting ---------- */
+.key-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.key-label { width: 72px; font-size: 12px; color: var(--muted); }
+.key-svg { flex: 1; height: 70px; }
+.key-orig { fill: #b8862c; }
+.key-blank { fill: #c9ced8; }
+.cut-sel { fill: transparent; stroke: transparent; cursor: pointer; }
+.cut-sel.on { stroke: var(--accent); stroke-width: 2; fill: rgba(245, 165, 36, .08); }
+.cut-sel.ok { fill: rgba(22, 199, 132, .14); }
+
+/* ---------- change / pass ---------- */
+.till-top { display: flex; gap: 18px; font-size: 14px; margin-bottom: 10px; }
+.till-tray { padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 10px; }
+.till-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.till-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.primary-btn { background: var(--accent); border-color: var(--accent); color: #1a1205; }
+.coin { padding: 10px 0; }
+.pass-row { display: flex; gap: 18px; align-items: center; }
+.passenger { text-align: center; }
+.face { font-size: 54px; line-height: 1; }
+.small-face { font-size: 36px; }
+.pass-card { flex: 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #e9edf5; color: #1a1f2b; }
+.pass-head { background: #1f6feb; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .5px; padding: 6px 10px; display: flex; justify-content: space-between; }
+.holo { color: #ffe28a; text-shadow: 0 0 6px #fff; }
+.pass-body { display: flex; gap: 12px; padding: 10px; align-items: center; }
+.pass-card .muted { color: #4b5568; }
+.pass-name { font-weight: 700; font-size: 15px; }
+.small { font-size: 12px; }

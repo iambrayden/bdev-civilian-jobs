@@ -130,3 +130,14 @@ main { flex: 1; overflow: hidden; position: relative; }
 }
 .toast.err { border-color: rgba(234, 57, 67, .5); color: #ff9aa0; }
 .toast.ok { border-color: rgba(22, 199, 132, .5); color: #6ff0bd; }
+
+.types { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.type {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left;
+    padding: 11px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border);
+}
+.type span { display: flex; flex-direction: column; gap: 2px; font-weight: 600; }
+.type small { color: var(--muted); font-weight: 400; font-size: 11.5px; }
+.type b { font-variant-numeric: tabular-nums; }
+.type.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(245, 165, 36, .25); }
+.type:disabled { opacity: .45; }

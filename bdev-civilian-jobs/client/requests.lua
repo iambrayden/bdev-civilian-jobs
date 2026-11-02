@@ -11,6 +11,51 @@ local function statusText(r)
     return r.status
 end
 
+--- Sends a service request. Jobs that need details from the requester's client
+--- (e.g. which house they're standing at) provide a `context` export.
+function CJ.sendRequest(jobId, typeId, note)
+    local job = CJ.jobs()[jobId]
+    if not job or not job.enabled or not job.requests then return false, 'That service is not available.' end
+    local context
+    if job.requests.context and job.resource then
+        local ok, good, data = pcall(function()
+            return exports[job.resource][job.requests.context](typeId)
+        end)
+        if not ok then return false, 'That service is not available right now.' end
+        if not good then return false, data or 'You can\'t request that here.' end
+        context = data
+    end
+    return lib.callback.await('bdev-civilian-jobs:request:create', false, jobId, note, typeId, context)
+end
+
+local function askAndSend(jobId, typeId, title)
+    local input = lib.inputDialog(title, {
+        { type = 'input', label = 'Note for the worker (optional)', max = 120 },
+    })
+    if not input then return end
+    local ok, res = CJ.sendRequest(jobId, typeId, input[1])
+    if not ok and res then CJ.notify(res, 'error') end
+end
+
+local function openTypes(jobId, job)
+    local r = job.requests
+    local options = {}
+    for _, t in ipairs(r.types) do
+        options[#options + 1] = {
+            title = t.label,
+            description = t.description,
+            icon = t.needsVehicle and 'car' or 'house',
+            metadata = {
+                { label = 'Price', value = CJ.money(t.price) },
+                t.npcPrice and { label = 'If nobody is on duty (NPC)', value = CJ.money(t.npcPrice) } or nil,
+            },
+            onSelect = function() askAndSend(jobId, t.id, t.label) end,
+        }
+    end
+    lib.registerContext({ id = 'civjobs_service_types', title = r.label, menu = 'civjobs_services', options = options })
+    lib.showContext('civjobs_service_types')
+end
+
 function CJ.openServiceMenu()
     local mine = lib.callback.await('bdev-civilian-jobs:request:mine', false)
     if mine then
@@ -42,16 +87,13 @@ function CJ.openServiceMenu()
                 description = r.description,
                 icon = job.icon or 'phone',
                 metadata = {
-                    { label = 'Price', value = CJ.money(r.price) },
+                    { label = r.types and 'From' or 'Price', value = CJ.money(r.price) },
                     r.npcPrice and { label = 'If nobody is on duty (NPC)', value = CJ.money(r.npcPrice) } or nil,
                 },
+                arrow = r.types ~= nil,
                 onSelect = function()
-                    local input = lib.inputDialog(r.label, {
-                        { type = 'input', label = 'Note for the worker (optional)', max = 120 },
-                    })
-                    if not input then return end
-                    local ok, res = lib.callback.await('bdev-civilian-jobs:request:create', false, id, input[1])
-                    if not ok and res then CJ.notify(res, 'error') end
+                    if r.types then return openTypes(id, job) end
+                    askAndSend(id, nil, r.label)
                 end,
             }
         end
@@ -68,7 +110,7 @@ function CJ.openQueue()
     local options = {}
     for _, r in ipairs(list) do
         options[#options + 1] = {
-            title = (r.assignedToMe and '[Yours] ' or '') .. r.requesterName,
+            title = (r.assignedToMe and '[Yours] ' or '') .. r.requesterName .. '  ·  ' .. (r.label or ''),
             description = (r.note and ('"%s"  '):format(r.note) or '') .. (r.plate and ('Plate %s'):format(r.plate) or ''),
             icon = r.assignedToMe and 'location-arrow' or 'user',
             metadata = {

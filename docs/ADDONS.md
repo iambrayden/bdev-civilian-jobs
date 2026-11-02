@@ -52,6 +52,23 @@ CivJobs.register({
 })
 ```
 
+**Several kinds of request with their own prices** (e.g. the locksmith's car / house / spare key) go in `requests.types`:
+
+```lua
+requests = {
+    label = 'Locksmith',
+    bonus = 100,
+    context = 'RequestContext',   -- optional client export of YOUR resource: (typeId) -> ok, data | false, 'message'
+    validate = 'ValidateRequest', -- optional server export of YOUR resource: (src, typeId, data, vehicleNetId) -> ok, info | false, 'message'
+    types = {
+        { id = 'car', label = 'Locked out of my car', price = 250, npcPrice = 400, needsVehicle = true },
+        { id = 'house', label = 'Locked out of my house', price = 300, npcPrice = 450 },
+    },
+}
+```
+
+`context` runs on the requester's client before the request is sent (e.g. "which house am I standing at?"). `validate` runs on the server and can refuse it (e.g. "you don't own that house"). Whatever `validate` returns as `info` arrives with the request (`req.info`), along with `req.type`, `req.typeLabel` and `req.context`.
+
 The id is what admins use: `civjobs disable windowclean`. Its default on/off comes from `Config.Jobs[id]` in the base config (or `Config.DefaultEnabled`).
 
 ## Server API (`CivJobs.*`)
@@ -88,6 +105,9 @@ The id is what admins use: `civjobs disable windowclean`. Its default on/off com
 | `carry(model, opts)` / `dropCarry()` / `isCarrying(model?)` | Carry a prop with an animation (blocks sprint, jump, entering vehicles) |
 | `blip(coords, label, sprite, color, route)` / `removeBlip(b)` | Blips with an optional GPS route |
 | `playAnim(dict, clip, duration, flag)` / `groundZ(coords)` / `notify(msg, type, title)` | Helpers |
+| `spawnRoadsideVehicle(model, spot, { plate, locked, roadside })` / `spawnPed(model, coords, heading, scenario)` / `deleteEntity(e)` | Networked mission entities for NPC scenes |
+| `driveAway(ped, vehicle, despawnMs)` | NPC gets in and drives off, then despawns |
+| `npcVisit({ target, vehicle, ped, label, workTime, scenario/anim, standAt, onWorkStart, onWorkEnd, onFinish })` | The whole "NPC drives out, walks up, works, leaves" fallback. Returns a handle with `:abort()`. See `bdev-cj-roadside/client/npc_service.lua` |
 
 ## Minimal example
 

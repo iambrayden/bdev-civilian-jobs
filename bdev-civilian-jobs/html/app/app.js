@@ -30,7 +30,7 @@
         if (s >= 60) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
         return `${s}s`;
     };
-    const ICONS = { wrench: '🔧', 'screwdriver-wrench': '🔧', bus: '🚌', key: '🔑', car: '🚗', 'car-side': '🚗', truck: '🚚', 'truck-pickup': '🛻', trash: '🗑️', box: '📦' };
+    const ICONS = { 'file-contract': '📄', 'key': '🔑', wrench: '🔧', 'screwdriver-wrench': '🔧', bus: '🚌', key: '🔑', car: '🚗', 'car-side': '🚗', truck: '🚚', 'truck-pickup': '🛻', trash: '🗑️', box: '📦' };
     const icon = (name) => ICONS[name] || '💼';
 
     let toastTimer;
@@ -174,7 +174,7 @@
                     <div class="icon">${icon(j.icon)}</div>
                     <div class="grow">
                         <div class="title">${esc(j.requests.label)}</div>
-                        <div class="sub">${j.onDuty > 0 ? `${j.onDuty} worker${j.onDuty === 1 ? '' : 's'} on duty · ${money(j.requests.price)}` : (j.requests.npcPrice ? `No workers on duty · NPC ${money(j.requests.npcPrice)}` : 'No workers on duty')}</div>
+                        <div class="sub">${j.onDuty > 0 ? `${j.onDuty} worker${j.onDuty === 1 ? '' : 's'} on duty · ${j.requests.types ? 'from ' : ''}${money(j.requests.price)}` : (j.requests.npcPrice ? `No workers on duty · NPC ${money(j.requests.npcPrice)}` : 'No workers on duty')}</div>
                     </div>
                 </div>
                 ${j.requests.description ? `<div class="desc">${esc(j.requests.description)}</div>` : ''}
@@ -219,24 +219,41 @@
         const j = data.jobs.find((x) => x.id === jobId);
         if (!j) return;
         const npc = j.onDuty === 0;
-        const price = npc ? j.requests.npcPrice : j.requests.price;
+        const types = j.requests.types || [{ id: null, label: j.requests.label, price: j.requests.price, npcPrice: j.requests.npcPrice, needsVehicle: j.requests.needsVehicle }];
+        let picked = types[0];
+        const priceOf = (t) => (npc ? t.npcPrice : t.price);
+        const usable = (t) => !npc || t.npcPrice != null;
+        picked = types.find(usable) || types[0];
+        const typeList = types.length > 1 ? `<div class="types">${types.map((t, i) => `
+            <button class="type ${t === picked ? 'on' : ''}" data-type="${i}" ${usable(t) ? '' : 'disabled'}>
+                <span>${esc(t.label)}${t.description ? `<small>${esc(t.description)}</small>` : ''}</span>
+                <b>${usable(t) ? money(priceOf(t)) : 'n/a'}</b>
+            </button>`).join('')}</div>` : '';
+        const info = () => `${npc
+            ? `Nobody is on duty, so an NPC will come. It costs <b>${money(priceOf(picked))}</b>.`
+            : `<b>${money(priceOf(picked))}</b> is held until the job is done, and refunded if you cancel before work starts.`}
+            ${picked.needsVehicle ? '<br>Stand next to the vehicle that needs help.' : ''}`;
         openSheet(`
             <h3>${esc(j.requests.label)}</h3>
-            <div class="sub muted">${npc
-                ? `Nobody is on duty, so an NPC will come. It costs <b>${money(price)}</b>.`
-                : `<b>${money(price)}</b> is held until the job is done, and refunded if you cancel before work starts.`}
-                ${j.requests.needsVehicle ? '<br>Stand next to the vehicle that needs help.' : ''}</div>
+            ${typeList}
+            <div class="sub muted" id="req-info">${info()}</div>
             <textarea id="req-note" maxlength="120" placeholder="Anything the worker should know? (optional)"></textarea>
             <div class="actions">
                 <button class="btn" id="sheet-cancel">Back</button>
-                <button class="btn primary" id="sheet-send">Request · ${money(price)}</button>
+                <button class="btn primary" id="sheet-send">Request · ${money(priceOf(picked))}</button>
             </div>`);
+        $('sheet').querySelectorAll('[data-type]').forEach((b) => b.addEventListener('click', () => {
+            picked = types[Number(b.dataset.type)];
+            $('sheet').querySelectorAll('[data-type]').forEach((x) => x.classList.toggle('on', x === b));
+            $('req-info').innerHTML = info();
+            $('sheet-send').textContent = `Request · ${money(priceOf(picked))}`;
+        }));
         $('sheet-cancel').onclick = closeSheet;
         $('sheet-send').onclick = async () => {
             $('sheet-send').disabled = true;
-            const res = await nui('app:request', { job: jobId, note: $('req-note').value });
+            const res = await nui('app:request', { job: jobId, type: picked.id, note: $('req-note').value });
             closeSheet();
-            if (res.ok) { toast('Request sent'); view = 'help'; showView('help'); }
+            if (res.ok) { toast('Request sent'); showView('help'); }
             else toast(res.error, 'error');
             refresh();
         };
@@ -328,6 +345,16 @@
                     depot: { x: 471, y: -1311 }, deposit: 600, vehicle: 'Service Truck', onDuty: 2, active: true, completed: 14, earned: 9850,
                     rating: 4.6, ratingCount: 9, level: { level: 3, xp: 310, current: 250, next: 450 },
                     requests: { label: 'Roadside assistance', description: 'Flat tire, dead battery, out of fuel or stuck? A mechanic comes to you.', price: 400, npcPrice: 650, needsVehicle: true },
+                },
+                {
+                    id: 'locksmith', label: 'Locksmith', icon: 'key', description: 'Get people back into their cars and homes, pick locks, crack safes and cut keys.',
+                    depot: { x: 170, y: -1722 }, deposit: 400, vehicle: 'Locksmith Van', onDuty: 1, active: false, completed: 3, earned: 1240,
+                    level: { level: 2, xp: 140, current: 100, next: 250 },
+                    requests: { label: 'Locksmith', description: 'Locked out of your car or house, or need a spare car key?', price: 200, npcPrice: 350, types: [
+                        { id: 'car', label: 'Locked out of my car', description: 'Stand next to your car.', price: 250, npcPrice: 400, needsVehicle: true },
+                        { id: 'house', label: 'Locked out of my house', description: 'Stand at your front door.', price: 300, npcPrice: 450 },
+                        { id: 'key', label: 'Spare car key', description: 'Stand next to your car.', price: 200, npcPrice: 350, needsVehicle: true },
+                    ] },
                 },
                 {
                     id: 'bus', label: 'Bus Driver', icon: 'bus', description: 'Drive city routes on a timetable. Collect fares, check passes and keep the ride smooth.',

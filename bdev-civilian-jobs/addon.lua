@@ -286,6 +286,215 @@ else
         return carry ~= nil and (model == nil or carry.model == model)
     end
 
+    -- spawning helpers -------------------------------------------------------
+
+    --- A networked mission vehicle parked at the side of the nearest road to `spot`.
+    function CivJobs.spawnRoadsideVehicle(model, spot, opts)
+        opts = opts or {}
+        local found, node, heading = GetClosestVehicleNodeWithHeading(spot.x, spot.y, spot.z, 1, 3.0, 0)
+        if not found then node, heading = vec3(spot.x, spot.y, spot.z), spot.w or 0.0 end
+        local p = node
+        if opts.roadside ~= false then
+            local onSide, side = GetPointOnRoadSide(node.x, node.y, node.z, 1)
+            if onSide then p = side end
+        end
+        local ok, hash = pcall(lib.requestModel, model, 10000)
+        if not ok or not hash then return nil end
+        local v = CreateVehicle(hash, p.x, p.y, p.z + 0.5, heading, true, false)
+        local deadline = GetGameTimer() + 3000
+        while not NetworkGetEntityIsNetworked(v) and GetGameTimer() < deadline do Wait(0) end
+        SetModelAsNoLongerNeeded(hash)
+        SetEntityAsMissionEntity(v, true, true)
+        SetVehicleOnGroundProperly(v)
+        if opts.plate then SetVehicleNumberPlateText(v, opts.plate) end
+        if opts.locked then SetVehicleDoorsLocked(v, 2) end
+        return v, heading
+    end
+
+    --- A networked mission ped that ignores the world around it.
+    function CivJobs.spawnPed(model, coords, heading, scenario)
+        local ok, hash = pcall(lib.requestModel, model, 10000)
+        if not ok or not hash then return nil end
+        local p = CreatePed(4, hash, coords.x, coords.y, coords.z, heading or 0.0, true, false)
+        SetModelAsNoLongerNeeded(hash)
+        SetEntityAsMissionEntity(p, true, true)
+        SetBlockingOfNonTemporaryEvents(p, true)
+        SetPedFleeAttributes(p, 0, false)
+        if scenario then TaskStartScenarioInPlace(p, scenario, 0, true) end
+        return p
+    end
+
+    function CivJobs.deleteEntity(e)
+        if e and DoesEntityExist(e) then
+            SetEntityAsMissionEntity(e, true, true)
+            DeleteEntity(e)
+        end
+    end
+
+    --- Lets a ped get into `veh`, drive away and despawn a bit later.
+    function CivJobs.driveAway(ped, veh, despawnMs)
+        CreateThread(function()
+            if not DoesEntityExist(ped) or not DoesEntityExist(veh) then return end
+            if not IsPedInVehicle(ped, veh, false) then
+                ClearPedTasks(ped)
+                TaskEnterVehicle(ped, veh, 10000, -1, 1.5, 1, 0)
+                local deadline = GetGameTimer() + 12000
+                while DoesEntityExist(ped) and not IsPedInVehicle(ped, veh, false) and GetGameTimer() < deadline do Wait(250) end
+                if not DoesEntityExist(ped) or not DoesEntityExist(veh) then return end
+                if not IsPedInVehicle(ped, veh, false) then SetPedIntoVehicle(ped, veh, -1) end
+            end
+            SetVehicleEngineOn(veh, true, true, false)
+            TaskVehicleDriveWander(ped, veh, 17.0, 786603)
+            SetPedKeepTask(ped, true)
+            Wait(despawnMs or 40000)
+            CivJobs.deleteEntity(ped)
+            CivJobs.deleteEntity(veh)
+        end)
+    end
+
+    --[[
+        NPC visit: an NPC worker drives out, walks up to the target, works, then drives off.
+        Used for "nobody is on duty" fallbacks. Runs on the requester's client.
+
+        CivJobs.npcVisit({
+            target = entity or vector3,           -- follows the entity if it moves
+            vehicle = 'utillitruck3', ped = 's_m_m_autoshop_01',
+            label = 'NPC mechanic', sprite = 446, color = 47,
+            spawnDistance = 140, driveTimeout = 120, workTime = 20,
+            scenario = 'PROP_HUMAN_BUM_BIN',       -- or anim = { dict, clip }
+            standAt = function(targetPos, targetEntity) return vector3 end, -- default: in front of it
+            onWorkStart = function() return true end, -- false = give up (e.g. a server callback)
+            onWorkEnd = function() return true end,
+            onFinish = function(success, message) end,
+        })  --> handle with :abort()
+    ]]
+    function CivJobs.npcVisit(opts)
+        local job = { aborted = false }
+        function job.abort() job.aborted = true end
+
+        local function targetPos()
+            if type(opts.target) == 'number' then
+                if DoesEntityExist(opts.target) then return GetEntityCoords(opts.target) end
+                return nil
+            end
+            return opts.target
+        end
+
+        local function waitFor(cond, ms)
+            local deadline = GetGameTimer() + ms
+            while not job.aborted and not cond() and GetGameTimer() < deadline do Wait(250) end
+            return not job.aborted and cond()
+        end
+
+        local function finish(success, msg)
+            if job.blip and DoesBlipExist(job.blip) then RemoveBlip(job.blip) end
+            lib.hideTextUI()
+            if job.aborted then
+                CivJobs.deleteEntity(job.ped)
+                CivJobs.deleteEntity(job.veh)
+            else
+                CivJobs.driveAway(job.ped, job.veh, 30000)
+            end
+            if opts.onFinish then opts.onFinish(success, msg, job.aborted) end
+        end
+
+        CreateThread(function()
+            local pos = targetPos()
+            if not pos then return finish(false, 'The NPC couldn\'t find you.') end
+            local dist = opts.spawnDistance or 140.0
+            local a = math.random() * math.pi * 2
+            local probe = vec4(pos.x + math.cos(a) * dist, pos.y + math.sin(a) * dist, pos.z, 0.0)
+            local veh = CivJobs.spawnRoadsideVehicle(opts.vehicle, probe, { roadside = false })
+            if not veh then return finish(false, 'The NPC is unavailable.') end
+            local okP, pHash = pcall(lib.requestModel, opts.ped, 10000)
+            if not okP then
+                CivJobs.deleteEntity(veh)
+                return finish(false, 'The NPC is unavailable.')
+            end
+            local driver = CreatePedInsideVehicle(veh, 4, pHash, -1, true, false)
+            SetModelAsNoLongerNeeded(pHash)
+            SetEntityAsMissionEntity(driver, true, true)
+            SetBlockingOfNonTemporaryEvents(driver, true)
+            job.veh, job.ped = veh, driver
+            if job.aborted then return finish(false) end
+
+            local b = AddBlipForEntity(veh)
+            SetBlipSprite(b, opts.sprite or 1)
+            SetBlipColour(b, opts.color or 5)
+            BeginTextCommandSetBlipName('STRING')
+            AddTextComponentSubstringPlayerName(opts.label or 'NPC')
+            EndTextCommandSetBlipName(b)
+            job.blip = b
+            lib.showTextUI((opts.label or 'NPC') .. ' on the way')
+
+            -- drive over; if it gets stuck, move it to the nearest road
+            TaskVehicleDriveToCoordLongrange(driver, veh, pos.x, pos.y, pos.z, 16.0, 786603, 10.0)
+            local function close()
+                local p = targetPos()
+                return p ~= nil and #(GetEntityCoords(veh) - p) < 15.0
+            end
+            if not waitFor(close, (opts.driveTimeout or 120) * 1000) then
+                if job.aborted then return finish(false) end
+                local p = targetPos()
+                if not p then return finish(false, 'The NPC couldn\'t find you.') end
+                local f2, n2, h2 = GetClosestVehicleNodeWithHeading(p.x, p.y, p.z, 1, 3.0, 0)
+                if f2 then
+                    SetEntityCoords(veh, n2.x, n2.y, n2.z + 0.5, false, false, false, false)
+                    SetEntityHeading(veh, h2)
+                end
+            end
+            if job.aborted then return finish(false) end
+
+            -- park, walk up
+            TaskVehicleTempAction(driver, veh, 27, 2000)
+            Wait(1500)
+            TaskLeaveVehicle(driver, veh, 0)
+            waitFor(function() return not IsPedInAnyVehicle(driver, false) end, 6000)
+            local p = targetPos()
+            if not p then return finish(false, 'The NPC couldn\'t find you.') end
+            local stand
+            if opts.standAt then
+                stand = opts.standAt(p, type(opts.target) == 'number' and opts.target or nil)
+            elseif type(opts.target) == 'number' then
+                local _, max = GetModelDimensions(GetEntityModel(opts.target))
+                stand = GetOffsetFromEntityInWorldCoords(opts.target, 0.0, max.y + 0.9, 0.0)
+            else
+                stand = p
+            end
+            TaskGoStraightToCoord(driver, stand.x, stand.y, stand.z, 1.0, 15000, 0.0, 0.5)
+            if not waitFor(function() return #(GetEntityCoords(driver) - stand) < 1.5 end, 15000) then
+                if job.aborted then return finish(false) end
+                SetEntityCoords(driver, stand.x, stand.y, stand.z - 1.0, false, false, false, false)
+            end
+            if type(opts.target) == 'number' and DoesEntityExist(opts.target) then
+                TaskTurnPedToFaceEntity(driver, opts.target, 1000)
+            else
+                TaskTurnPedToFaceCoord(driver, p.x, p.y, p.z, 1000)
+            end
+            Wait(1000)
+
+            -- work
+            if opts.onWorkStart and not opts.onWorkStart() then return finish(false) end
+            if opts.anim then
+                if pcall(lib.requestAnimDict, opts.anim.dict, 5000) then
+                    TaskPlayAnim(driver, opts.anim.dict, opts.anim.clip, 8.0, -8.0, -1, 1, 0, false, false, false)
+                end
+            else
+                TaskStartScenarioInPlace(driver, opts.scenario or 'PROP_HUMAN_BUM_BIN', 0, true)
+            end
+            local endsAt = GetGameTimer() + (opts.workTime or 20) * 1000
+            while GetGameTimer() < endsAt and not job.aborted do
+                lib.showTextUI(('%s working… %ds'):format(opts.label or 'NPC', math.ceil((endsAt - GetGameTimer()) / 1000)))
+                Wait(1000)
+            end
+            if job.aborted then return finish(false) end
+            ClearPedTasks(driver)
+            if opts.onWorkEnd and not opts.onWorkEnd() then return finish(false, 'The NPC couldn\'t finish the job.') end
+            finish(true)
+        end)
+        return job
+    end
+
     AddEventHandler('onResourceStop', function(res)
         if res == GetCurrentResourceName() then CivJobs.dropCarry() end
     end)

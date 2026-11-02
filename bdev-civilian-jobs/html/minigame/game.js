@@ -130,7 +130,9 @@
         if (e.key === 'Escape') { end({ success: false, cancelled: true }); return; }
         if (e.code === 'Space') { e.preventDefault(); press(); }
         if (e.key === 'Enter' && active.keys.enter) active.keys.enter();
+        if (active && active.keys.key) active.keys.key(e);
     });
+    window.addEventListener('wheel', (e) => { if (active && active.keys.wheel) active.keys.wheel(e); }, { passive: true });
     window.addEventListener('keyup', (e) => { if (e.code === 'Space') release(); });
     document.addEventListener('mousedown', (e) => {
         if (e.button === 0 && e.target.closest && e.target.closest('.hold-area')) press();
@@ -548,6 +550,435 @@
         });
         api.on('press', () => { held = true; });
         api.on('release', () => { held = false; });
+    };
+
+    // ------------------------------------------------------------------
+    // pins: pin-tumbler lockpick. Pick a pin (←/→ or mouse), hold SPACE to lift it,
+    // let go when it sits on the shear line. Only the binding pin sets; it lifts
+    // stiffly (that's the feel to look for). Lifting the binding pin too far oversets it.
+    //   opts: count (5)
+    // ------------------------------------------------------------------
+    Games.pins = (o, api) => {
+        const n = clamp(o.count || 5, 3, 7);
+        const band = lerp(0.1, 0.045, o.difficulty);
+        const feel = o.difficulty < 0.6; // easy: the binding pin visibly shudders
+        api.hint(o.hint || 'Pick a pin with ←/→ (or the mouse) and hold SPACE to lift it. The binding pin feels stiff. Let go when it reaches the shear line.');
+        api.keys('<kbd>←</kbd><kbd>→</kbd> pin &nbsp; <kbd>HOLD SPACE</kbd> lift &nbsp; <kbd>ESC</kbd> stop');
+
+        const wrap = el('div', 'pins');
+        const shear = el('div', 'shear');
+        wrap.appendChild(shear);
+        const order = Array.from({ length: n }, (_, i) => i).sort(() => Math.random() - 0.5);
+        const pins = [];
+        for (let i = 0; i < n; i++) {
+            const col = el('div', 'pin-col hold-area');
+            const pin = el('div', 'pin');
+            pin.innerHTML = '<div class="driver"></div><div class="key"></div>';
+            col.appendChild(pin);
+            col.addEventListener('mousedown', () => select(i));
+            col.addEventListener('mouseenter', () => { if (!lifting) select(i); });
+            wrap.appendChild(col);
+            pins.push({ col, pin, need: rand(0.45, 0.8), h: 0, set: false });
+        }
+        api.stage.appendChild(wrap);
+
+        let sel = 0, lifting = false, step = 0;
+        const select = (i) => {
+            if (lifting) return;
+            sel = clamp(i, 0, n - 1);
+            pins.forEach((p, k) => p.col.classList.toggle('sel', k === sel));
+        };
+        select(0);
+        // the shear line sits at the binding pin's "need" height; each pin needs its own lift
+        const draw = () => pins.forEach((p, k) => {
+            const lift = p.set ? p.need : p.h;
+            p.pin.style.transform = `translateY(${-lift * 70}px)`;
+            p.col.classList.toggle('set', p.set);
+            const binding = order[step] === k && !p.set;
+            p.pin.classList.toggle('shudder', feel && lifting && sel === k && binding && p.h > 0.05);
+        });
+        shear.style.bottom = '0';
+
+        api.loop((dt) => {
+            const p = pins[sel];
+            if (lifting && !p.set) {
+                const binding = order[step] === sel;
+                p.h = Math.min(1, p.h + dt * (binding ? 0.45 : 1.1));
+                if (binding && p.h > p.need + band) {
+                    // overset: the pin jams past the shear line
+                    lifting = false;
+                    p.h = 0;
+                    p.col.classList.remove('flash-bad'); void p.col.offsetWidth; p.col.classList.add('flash-bad');
+                    api.mistake();
+                }
+            } else if (!p.set) {
+                p.h = Math.max(0, p.h - dt * 2.5);
+            }
+            pins.forEach((q, k) => { if (k !== sel && !q.set) q.h = Math.max(0, q.h - dt * 2.5); });
+            // the shear line marker follows the selected pin's target so the player can read it
+            shear.style.transform = `translateY(${-(pins[sel].need) * 70}px)`;
+            draw();
+        });
+        api.on('key', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') select(sel - 1);
+            if (e.key === 'ArrowRight' || e.key === 'd') select(sel + 1);
+        });
+        api.on('press', () => { if (!pins[sel].set) lifting = true; });
+        api.on('release', () => {
+            if (!lifting) return;
+            lifting = false;
+            const p = pins[sel];
+            const binding = order[step] === sel;
+            if (binding && Math.abs(p.h - p.need) <= band) {
+                p.set = true;
+                p.col.classList.remove('flash-good'); void p.col.offsetWidth; p.col.classList.add('flash-good');
+                step++;
+                if (step >= n) setTimeout(() => api.finish({ success: true, quality: n / (n + api.mistakes * 1.5) }), 250);
+            }
+        });
+    };
+
+    // ------------------------------------------------------------------
+    // slimjim: click the gap in the window seal, then steer the rod (mouse) down
+    // through the door to the lock rod and click to hook it. Touching anything snags.
+    //   opts: obstacles (4)
+    // ------------------------------------------------------------------
+    Games.slimjim = (o, api) => {
+        const W = 480, H = 220;
+        const count = o.obstacles || Math.round(lerp(3, 6, o.difficulty));
+        api.hint(o.hint || 'Click the gap in the window seal, then guide the rod to the lock linkage without touching anything. Click to hook it.');
+        api.keys('<kbd>MOUSE</kbd> steer &nbsp; <kbd>CLICK</kbd> hook &nbsp; <kbd>ESC</kbd> stop');
+        const cv = el('canvas', 'jim');
+        cv.width = W; cv.height = H;
+        api.stage.appendChild(cv);
+        const ctx = cv.getContext('2d');
+        const slot = { x: rand(60, 140), y: 14 };
+        const target = { x: rand(330, 430), y: rand(150, 195), r: lerp(16, 10, o.difficulty) };
+        const obs = [];
+        for (let i = 0; i < count; i++) {
+            const vertical = Math.random() < 0.4;
+            const w = vertical ? 10 : rand(70, 150), h = vertical ? rand(50, 90) : 10;
+            const ob = { x: rand(40, W - 40 - w), y: rand(40, H - 30 - h), w, h };
+            if (Math.hypot(ob.x + w / 2 - target.x, ob.y + h / 2 - target.y) < 50) { i--; continue; }
+            if (ob.y < 50 && Math.abs(ob.x + w / 2 - slot.x) < 60) { i--; continue; }
+            obs.push(ob);
+        }
+        let inserted = false, tip = { x: slot.x, y: slot.y }, mouse = { x: slot.x, y: slot.y }, flash = 0;
+        const toLocal = (e) => {
+            const r = cv.getBoundingClientRect();
+            return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+        };
+        cv.addEventListener('mousemove', (e) => { mouse = toLocal(e); });
+        cv.addEventListener('click', (e) => {
+            const m = toLocal(e);
+            if (!inserted) {
+                if (Math.hypot(m.x - slot.x, m.y - slot.y) < 18) { inserted = true; tip = { x: slot.x, y: slot.y + 6 }; }
+                return;
+            }
+            if (Math.hypot(tip.x - target.x, tip.y - target.y) <= target.r) {
+                api.finish({ success: true, quality: 1 / (1 + api.mistakes * 0.4) });
+            }
+        });
+        const snag = () => {
+            flash = 0.3;
+            inserted = false;
+            tip = { x: slot.x, y: slot.y };
+            api.mistake();
+        };
+        api.loop((dt) => {
+            if (inserted) {
+                // the rod follows the mouse, a little slowly, so you can't flick past things
+                const max = 260 * dt;
+                const dx = mouse.x - tip.x, dy = mouse.y - tip.y, d = Math.hypot(dx, dy);
+                if (d > 0.5) { const k = Math.min(1, max / d); tip.x += dx * k; tip.y += dy * k; }
+                tip.x = clamp(tip.x, 4, W - 4); tip.y = clamp(tip.y, 4, H - 4);
+                if (tip.y < 12 && Math.abs(tip.x - slot.x) > 14) snag();
+                for (const b of obs) if (tip.x > b.x - 2 && tip.x < b.x + b.w + 2 && tip.y > b.y - 2 && tip.y < b.y + b.h + 2) { snag(); break; }
+            }
+            flash = Math.max(0, flash - dt);
+            // draw
+            ctx.clearRect(0, 0, W, H);
+            ctx.fillStyle = '#141924'; ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = flash > 0 ? 'rgba(234,57,67,.35)' : '#2a3448'; ctx.fillRect(0, 0, W, 10); // glass
+            ctx.fillStyle = '#0b0e14'; ctx.fillRect(slot.x - 12, 0, 24, 12);
+            ctx.strokeStyle = '#f5a524'; ctx.lineWidth = 2; ctx.strokeRect(slot.x - 12, 0, 24, 12);
+            ctx.fillStyle = '#4b5568';
+            for (const b of obs) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(b.x, b.y, b.w, b.h, 4) : ctx.rect(b.x, b.y, b.w, b.h); ctx.fill(); }
+            ctx.beginPath(); ctx.arc(target.x, target.y, target.r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(22,199,132,.22)'; ctx.fill(); ctx.strokeStyle = '#16c784'; ctx.stroke();
+            ctx.fillStyle = '#8a93a6'; ctx.font = '11px sans-serif'; ctx.fillText('lock rod', target.x - 20, target.y + target.r + 13);
+            if (inserted) {
+                ctx.strokeStyle = '#d7dbe3'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(slot.x, 0); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+                ctx.beginPath(); ctx.arc(tip.x, tip.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+            } else {
+                ctx.fillStyle = '#eef1f7'; ctx.font = '12px sans-serif'; ctx.fillText('click the gap', slot.x + 18, 26);
+            }
+        });
+    };
+
+    // ------------------------------------------------------------------
+    // dial: safe dial. Turn RIGHT to the first number, LEFT to the second, RIGHT to
+    // the third (A/D, arrows or mouse wheel). Watch for the click, press SPACE to set it.
+    //   opts: numbers (3)
+    // ------------------------------------------------------------------
+    Games.dial = (o, api) => {
+        const count = clamp(o.numbers || 3, 2, 4);
+        const combo = Array.from({ length: count }, () => Math.floor(rand(0, 100)));
+        const tol = o.difficulty < 0.5 ? 1 : 0;
+        const loud = o.difficulty < 0.7;
+        api.hint(o.hint || 'Turn the dial and watch the light. When it clicks, press SPACE to set the number.');
+        api.keys('<kbd>A</kbd><kbd>D</kbd> / wheel turn &nbsp; <kbd>SPACE</kbd> set &nbsp; <kbd>ESC</kbd> stop');
+        const wrap = el('div', 'dial-wrap');
+        const dial = el('div', 'dial');
+        const face = el('div', 'dial-face');
+        for (let i = 0; i < 100; i += 2) {
+            const t = el('div', 'tick' + (i % 10 === 0 ? ' big' : ''));
+            t.style.transform = `rotate(${i * 3.6}deg)`;
+            if (i % 10 === 0) t.innerHTML = `<span style="transform: rotate(${-i * 3.6}deg)">${i}</span>`;
+            face.appendChild(t);
+        }
+        dial.append(face, el('div', 'dial-mark'));
+        const side = el('div', 'dial-side');
+        side.innerHTML = '<div class="light" id="dial-light"></div><div class="big" id="dial-num">0</div><div id="dial-step"></div><div class="combo" id="dial-combo"></div>';
+        wrap.append(dial, side);
+        api.stage.appendChild(wrap);
+        let num = 0, step = 0, lastDir = 0, clickT = 0;
+        const need = () => (step % 2 === 0 ? 1 : -1); // 1 = right (up), -1 = left (down)
+        const render = () => {
+            face.style.transform = `rotate(${-num * 3.6}deg)`;
+            side.querySelector('#dial-num').textContent = String(num).padStart(2, '0');
+            side.querySelector('#dial-step').textContent = step < count ? `Turn ${need() > 0 ? 'RIGHT' : 'LEFT'} to number ${step + 1}` : '';
+            side.querySelector('#dial-combo').textContent = combo.slice(0, step).map((c) => String(c).padStart(2, '0')).join(' - ');
+        };
+        const turn = (dir) => {
+            num = (num + dir + 100) % 100;
+            lastDir = dir;
+            const d = Math.min(Math.abs(num - combo[step]), 100 - Math.abs(num - combo[step]));
+            if (d <= tol && dir === need()) {
+                clickT = loud ? 0.5 : 0.18;
+            }
+            render();
+        };
+        api.on('key', (e) => {
+            if (e.key === 'd' || e.key === 'ArrowRight' || e.key === 'ArrowUp') turn(1);
+            if (e.key === 'a' || e.key === 'ArrowLeft' || e.key === 'ArrowDown') turn(-1);
+        });
+        api.on('wheel', (e) => turn(e.deltaY < 0 ? 1 : -1));
+        api.on('press', () => {
+            const d = Math.min(Math.abs(num - combo[step]), 100 - Math.abs(num - combo[step]));
+            if (d <= tol && lastDir === need()) {
+                step++;
+                if (step >= count) return api.finish({ success: true, quality: count / (count + api.mistakes) });
+                render();
+            } else {
+                api.mistake();
+            }
+        });
+        api.loop((dt) => {
+            clickT = Math.max(0, clickT - dt);
+            const l = side.querySelector('#dial-light');
+            l.style.opacity = clickT > 0 ? (loud ? 1 : 0.45) : 0.12;
+        });
+        render();
+    };
+
+    // ------------------------------------------------------------------
+    // keycut: grind each cut of the blank to match the original key. Hold SPACE to
+    // grind the selected cut (←/→ to pick). You can't add metal back: overcut = mistake.
+    //   opts: cuts (5)
+    // ------------------------------------------------------------------
+    Games.keycut = (o, api) => {
+        const n = clamp(o.cuts || 5, 3, 7);
+        const tol = lerp(0.07, 0.035, o.difficulty);
+        const speed = lerp(0.35, 0.6, o.difficulty);
+        const target = Array.from({ length: n }, () => Math.round(rand(2, 9)) / 10);
+        const cut = Array(n).fill(0);
+        api.hint(o.hint || 'Match the original key. Pick a cut with ←/→ and hold SPACE to grind it down. You can\'t put metal back.');
+        api.keys('<kbd>←</kbd><kbd>→</kbd> cut &nbsp; <kbd>HOLD SPACE</kbd> grind &nbsp; <kbd>ESC</kbd> stop');
+        const ns = 'http://www.w3.org/2000/svg';
+        const mk = (label) => {
+            const box = el('div', 'key-row');
+            box.innerHTML = `<div class="key-label">${label}</div>`;
+            const svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('viewBox', '0 0 420 70');
+            svg.setAttribute('class', 'key-svg');
+            const path = document.createElementNS(ns, 'path');
+            svg.appendChild(path);
+            box.appendChild(svg);
+            api.stage.appendChild(box);
+            return { svg, path };
+        };
+        const orig = mk('Original');
+        const blank = mk('Your copy');
+        const markers = [];
+        for (let i = 0; i < n; i++) {
+            const r = document.createElementNS(ns, 'rect');
+            r.setAttribute('class', 'cut-sel');
+            blank.svg.appendChild(r);
+            markers.push(r);
+        }
+        const shape = (depths) => {
+            // a key blade: bow on the left, cuts along the top edge
+            let d = 'M10 10 H90 ';
+            const x0 = 100, w = 300 / n;
+            depths.forEach((dep, i) => {
+                const y = 10 + dep * 34;
+                d += `L${x0 + i * w + w * 0.2} ${y} L${x0 + i * w + w * 0.8} ${y} `;
+            });
+            d += 'L410 30 L410 60 L90 60 L10 60 Z';
+            return d;
+        };
+        orig.path.setAttribute('d', shape(target));
+        orig.path.setAttribute('class', 'key-orig');
+        blank.path.setAttribute('class', 'key-blank');
+        let sel = 0, grinding = false;
+        const render = () => {
+            blank.path.setAttribute('d', shape(cut));
+            const w = 300 / n;
+            markers.forEach((m, i) => {
+                m.setAttribute('x', 100 + i * w + 2); m.setAttribute('y', 2); m.setAttribute('width', w - 4); m.setAttribute('height', 66);
+                const ok = Math.abs(cut[i] - target[i]) <= tol;
+                m.setAttribute('class', 'cut-sel' + (i === sel ? ' on' : '') + (ok ? ' ok' : ''));
+            });
+        };
+        render();
+        api.on('key', (e) => {
+            if (grinding) return;
+            if (e.key === 'ArrowLeft' || e.key === 'a') sel = (sel + n - 1) % n;
+            if (e.key === 'ArrowRight' || e.key === 'd') sel = (sel + 1) % n;
+            render();
+        });
+        markers.forEach((m, i) => m.addEventListener('mousedown', () => { if (!grinding) { sel = i; render(); } }));
+        api.on('press', () => { grinding = true; });
+        api.on('release', () => {
+            grinding = false;
+            if (cut.every((c, i) => Math.abs(c - target[i]) <= tol)) api.finish({ success: true, quality: n / (n + api.mistakes * 1.5) });
+        });
+        api.loop((dt) => {
+            if (!grinding) return;
+            cut[sel] = Math.min(1, cut[sel] + speed * dt);
+            if (cut[sel] > target[sel] + tol) {
+                grinding = false;
+                cut[sel] = target[sel]; // the ruined cut is filed back by hand, but it costs you
+                api.mistake();
+            }
+            render();
+        });
+        blank.svg.classList.add('hold-area');
+    };
+
+    // ------------------------------------------------------------------
+    // change: a passenger pays cash, give the right change.
+    //   opts: fares ([2.5, 3, 3.75]), count (1)
+    // ------------------------------------------------------------------
+    Games.change = (o, api) => {
+        const fares = o.fares || [2.5, 2.75, 3, 3.25, 3.5, 3.75];
+        const bills = [5, 10, 20];
+        let left = o.count || 1, served = 0;
+        const coins = [[10, '$10'], [5, '$5'], [1, '$1'], [0.25, '25¢'], [0.1, '10¢'], [0.05, '5¢']];
+        api.hint(o.hint || 'Give the passenger the right change, then press Give change (ENTER).');
+        api.keys('<kbd>CLICK</kbd> add money &nbsp; <kbd>ENTER</kbd> give &nbsp; <kbd>ESC</kbd> stop');
+        const top = el('div', 'till-top');
+        const tray = el('div', 'till-tray');
+        const grid = el('div', 'till-grid');
+        coins.forEach(([v, label]) => {
+            const b = el('button', 'btn coin', label);
+            b.addEventListener('click', () => { given = Math.round((given + v) * 100) / 100; draw(); });
+            grid.appendChild(b);
+        });
+        const actions = el('div', 'till-actions');
+        const clear = el('button', 'btn', 'Clear');
+        const give = el('button', 'btn primary-btn', 'Give change');
+        actions.append(clear, give);
+        api.stage.append(top, tray, grid, actions);
+        let fare, paid, given;
+        const next = () => {
+            fare = fares[Math.floor(Math.random() * fares.length)];
+            paid = bills.filter((b) => b > fare)[Math.floor(Math.random() * 2)] || 5;
+            given = 0;
+            draw();
+        };
+        const draw = () => {
+            top.innerHTML = `<div>Fare <b>$${fare.toFixed(2)}</b></div><div>Paid with <b>$${paid}</b></div><div class="muted">${served + 1} / ${served + left}</div>`;
+            tray.innerHTML = `Change given: <b>$${given.toFixed(2)}</b>`;
+        };
+        clear.addEventListener('click', () => { given = 0; draw(); });
+        const submit = () => {
+            const want = Math.round((paid - fare) * 100) / 100;
+            if (Math.abs(given - want) < 0.001) {
+                served++; left--;
+                tray.classList.remove('flash-good'); void tray.offsetWidth; tray.classList.add('flash-good');
+                if (left <= 0) return api.finish({ success: true, quality: served / (served + api.mistakes) });
+                next();
+            } else {
+                tray.classList.remove('flash-bad'); void tray.offsetWidth; tray.classList.add('flash-bad');
+                if (!api.mistake()) { given = 0; draw(); }
+            }
+        };
+        give.addEventListener('click', submit);
+        api.on('enter', submit);
+        next();
+    };
+
+    // ------------------------------------------------------------------
+    // pass: check a bus pass. Accept (A) or reject (R).
+    //   opts: zone ('City'), today ('2026-11-02'), fakeChance (0.35)
+    //   returns success = the right call, accepted = what the player chose
+    // ------------------------------------------------------------------
+    Games.pass = (o, api) => {
+        const zones = ['City', 'Airport', 'Vinewood', 'County'];
+        const zone = o.zone || 'City';
+        const today = o.today ? new Date(o.today + 'T12:00:00') : new Date();
+        const faces = ['🧔', '👩', '👨‍🦰', '👩‍🦱', '👴', '👵', '🧑‍🦲', '👱‍♀️', '👨‍🦳', '🧑'];
+        const first = ['Alex', 'Sam', 'Jordan', 'Casey', 'Morgan', 'Riley', 'Taylor', 'Jamie', 'Drew', 'Quinn'];
+        const last = ['Rivera', 'Chen', 'Okafor', 'Novak', 'Haddad', 'Silva', 'Brooks', 'Kowalski', 'Mendes', 'Price'];
+        const face = faces[Math.floor(Math.random() * faces.length)];
+        const card = {
+            name: `${first[Math.floor(Math.random() * 10)]} ${last[Math.floor(Math.random() * 10)]}`,
+            face, zones: [zone, zones[Math.floor(Math.random() * zones.length)]].filter((v, i, a) => a.indexOf(v) === i),
+            expires: new Date(today.getTime() + rand(5, 200) * 864e5), holo: true,
+        };
+        let fake = null;
+        if (Math.random() < (o.fakeChance ?? 0.35)) {
+            fake = ['expired', 'zone', 'holo', 'photo'][Math.floor(Math.random() * 4)];
+            if (fake === 'expired') card.expires = new Date(today.getTime() - rand(1, 60) * 864e5);
+            if (fake === 'zone') card.zones = zones.filter((z) => z !== zone).slice(0, 1 + Math.floor(Math.random() * 2));
+            if (fake === 'holo') card.holo = false;
+            if (fake === 'photo') { let f; do { f = faces[Math.floor(Math.random() * faces.length)]; } while (f === face); card.face = f; }
+        }
+        const fmt = (d) => d.toISOString().slice(0, 10);
+        api.hint(o.hint || `Route zone: ${zone}. Today: ${fmt(today)}. Check the date, the zone, the hologram and the photo.`);
+        api.keys('<kbd>A</kbd> accept &nbsp; <kbd>R</kbd> reject &nbsp; <kbd>ESC</kbd> stop');
+        const row = el('div', 'pass-row');
+        row.innerHTML = `
+            <div class="passenger"><div class="face">${face}</div><div class="muted small">Passenger</div></div>
+            <div class="pass-card">
+                <div class="pass-head">LS TRANSIT · MONTHLY PASS ${card.holo ? '<span class="holo">✦</span>' : ''}</div>
+                <div class="pass-body">
+                    <div class="face small-face">${card.face}</div>
+                    <div>
+                        <div class="pass-name">${esc(card.name)}</div>
+                        <div class="muted small">Zones: <b>${card.zones.join(', ')}</b></div>
+                        <div class="muted small">Valid until: <b>${fmt(card.expires)}</b></div>
+                    </div>
+                </div>
+            </div>`;
+        const actions = el('div', 'till-actions');
+        const rej = el('button', 'btn', 'Reject (R)');
+        const acc = el('button', 'btn primary-btn', 'Accept (A)');
+        actions.append(rej, acc);
+        api.stage.append(row, actions);
+        const decide = (accept) => {
+            const right = accept === (fake === null);
+            api.finish({ success: right, quality: right ? 1 : 0, accepted: accept, fake: fake || false });
+        };
+        acc.addEventListener('click', () => decide(true));
+        rej.addEventListener('click', () => decide(false));
+        api.on('key', (e) => {
+            if (e.key === 'a' || e.key === 'A') decide(true);
+            if (e.key === 'r' || e.key === 'R') decide(false);
+        });
     };
 
     // Open the page in a normal browser to try the games: ?game=nuts

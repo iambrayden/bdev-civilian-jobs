@@ -23,8 +23,18 @@ The difficulty is eased by the player's level in the job they're working: `Confi
 | `wiring` | Click a left item, then its right match | `mode = 'match'`: `count` (3-8). `mode = 'sequence'`: `clamps`, `terminals`, `order`; returns `shock = true` after a wrong connection | Wiring harness, jump starts |
 | `pour` | Hold SPACE to pour, ENTER when done | `label`, `color` | Fuel, coolant |
 | `tension` | Hold SPACE to winch, keep the needle in the green | `duration` (seconds in the green, default 6); returns `snapped = true` if it hit red | Winching cars upright |
+| `pins` | ←/→ pick a pin, hold SPACE to lift, let go on the shear line. Only the binding pin sets, and it lifts stiffly; lifting it too far oversets it | `count` (3-7, default 5) | Locksmith doors, high-security car locks |
+| `slimjim` | Click the gap in the window seal, steer the rod with the mouse to the lock rod, click to hook | `obstacles` (default 3-6 by difficulty) | Car lockouts, repo |
+| `dial` | A/D or mouse wheel to turn (right, left, right…), SPACE when the light clicks | `numbers` (2-4, default 3) | Safes |
+| `keycut` | ←/→ pick a cut, hold SPACE to grind it to match the original. Overcutting is a mistake | `cuts` (3-7, default 5) | Key copies, rekeying |
+| `change` | Click bills/coins to give the right change, ENTER to hand it over | `fares` (list), `count` (1) | Bus fares |
+| `pass` | Check a transit pass: date, zone, hologram, photo. A to accept, R to reject | `zone`, `today` (YYYY-MM-DD), `fakeChance` (0.35); returns `accepted` and `fake` | Bus passes |
 
 Try one in a browser: open `bdev-civilian-jobs/html/minigame/index.html?game=wiring`.
 
 ![nuts](screenshots/mg-nuts.png)
 ![wiring](screenshots/mg-wiring.png)
+![pins](screenshots/mg-pins.png)
+![dial](screenshots/mg-dial.png)
+![keycut](screenshots/mg-keycut.png)
+![pass](screenshots/mg-pass.png)
