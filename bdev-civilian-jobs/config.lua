@@ -20,6 +20,7 @@ Config.Jobs = {
     bus = true,
     locksmith = true,
     repo = true,
+    foodtruck = true,
 }
 
 --------------------------------------------------------------------------------
@@ -70,6 +71,10 @@ Config.Requests = {
     pairBonusCooldown = 1800,  -- the job's bonus is only paid once per requester + worker pair in this window
     command = 'service',       -- /service: request a service without a phone
     queueCommand = 'jobqueue', -- /jobqueue: on-duty workers see open requests without a phone
+    -- Work done for real players pays more than city (NPC) work. The job-paid part of a
+    -- player job (the job's bonus + per-task pay) is multiplied by this and doesn't count
+    -- toward the hourly cap. The once-per-pair cooldown above still stops friends farming it.
+    playerPayMultiplier = 1.5,
 }
 
 --------------------------------------------------------------------------------
@@ -86,7 +91,7 @@ Config.Phone = {
         creator = 'bdev',
         description = 'Find work, track your shift and request roadside help, locksmiths and more.',
         age = '16+',
-        appStoreOnly = false, -- false = on every home screen
+        appStoreOnly = true,  -- players download it from the App Store (false = pre-installed on every phone)
         price = 0,
     },
 }

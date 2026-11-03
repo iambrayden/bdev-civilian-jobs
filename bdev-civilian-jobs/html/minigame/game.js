@@ -981,6 +981,96 @@
         });
     };
 
+    // ------------------------------------------------------------------
+    // grill: everything on the grill cooks at its own speed. Click each one
+    // when its bar is in the green. Too early = raw, too late = burnt (start over).
+    //   opts: items (['Carne asada', 'Chicken'])
+    // ------------------------------------------------------------------
+    Games.grill = (o, api) => {
+        const names = (o.items && o.items.length ? o.items : ['Patty', 'Patty']).slice(0, 6);
+        const lo = lerp(0.6, 0.68, o.difficulty), hi = lo + lerp(0.22, 0.12, o.difficulty);
+        api.hint(o.hint || 'Click each item when its bar is in the green. Too early is raw, too late is burnt.');
+        api.keys('<kbd>CLICK</kbd> take it off &nbsp; <kbd>ESC</kbd> stop');
+        const grid = el('div', 'grill');
+        const items = names.map((name) => {
+            const card = el('div', 'grill-item');
+            card.innerHTML = `<div class="grill-name">${esc(name)}</div><div class="bar small-bar"><div class="zone" style="left:${lo * 100}%;width:${(hi - lo) * 100}%"></div><div class="fill"></div></div><div class="grill-state">cooking…</div>`;
+            grid.appendChild(card);
+            const it = { card, fill: card.querySelector('.fill'), state: card.querySelector('.grill-state'), v: 0, rate: rand(0.1, 0.2) * lerp(0.9, 1.5, o.difficulty), done: false };
+            card.addEventListener('click', () => take(it));
+            return it;
+        });
+        api.stage.appendChild(grid);
+        let good = 0;
+        const reset = (it, why) => {
+            it.state.textContent = why + '! New one on.';
+            it.card.classList.remove('flash-bad'); void it.card.offsetWidth; it.card.classList.add('flash-bad');
+            it.v = 0;
+            it.rate = rand(0.1, 0.2) * lerp(0.9, 1.5, o.difficulty);
+            api.mistake();
+        };
+        function take(it) {
+            if (it.done) return;
+            if (it.v < lo) return reset(it, 'Raw');
+            if (it.v > hi) return reset(it, 'Burnt');
+            it.done = true;
+            good++;
+            it.card.classList.add('done');
+            it.state.textContent = 'perfect';
+            if (good >= items.length) api.finish({ success: true, quality: items.length / (items.length + api.mistakes) });
+        }
+        api.loop((dt) => {
+            for (const it of items) {
+                if (it.done) continue;
+                it.v += it.rate * dt;
+                if (it.v >= 1) { reset(it, 'Burnt'); if (!active) return; }
+                it.fill.style.width = (Math.min(1, it.v) * 100) + '%';
+                it.fill.classList.toggle('over', it.v > hi);
+            }
+        });
+    };
+
+    // ------------------------------------------------------------------
+    // assemble: build the order. Click the ingredients in the order on the ticket.
+    // On hard difficulty the ticket flips over after a few seconds.
+    //   opts: steps (['Tortilla', 'Carne asada', 'Onion']), extra (distractor list), label
+    // ------------------------------------------------------------------
+    Games.assemble = (o, api) => {
+        const steps = o.steps && o.steps.length ? o.steps : ['Bun', 'Patty', 'Cheese', 'Lettuce'];
+        const pool = Array.from(new Set(steps.concat(o.extra || ['Onion', 'Pickles', 'Jalapeños', 'Lettuce', 'Cheese', 'Sour cream'])));
+        const memory = o.difficulty > 0.6;
+        api.hint(o.hint || (memory ? 'Read the ticket. It flips over in a few seconds, then build it from memory.' : 'Add the ingredients in the order on the ticket.'));
+        api.keys('<kbd>CLICK</kbd> add &nbsp; <kbd>ESC</kbd> stop');
+        const wrap = el('div', 'assemble');
+        const ticket = el('div', 'ticket');
+        ticket.innerHTML = `<div class="ticket-head">${esc(o.label || 'Order')}</div>` + steps.map((s, i) => `<div class="ticket-line" data-i="${i}">${i + 1}. ${esc(s)}</div>`).join('');
+        const right = el('div', 'assemble-right');
+        const plate = el('div', 'plate', '<span class="muted">Your build:</span> ');
+        const buttons = el('div', 'ingredients');
+        pool.sort(() => Math.random() - 0.5).forEach((name) => {
+            const b = el('button', 'btn ingredient', esc(name));
+            b.addEventListener('click', () => add(name));
+            buttons.appendChild(b);
+        });
+        right.append(plate, buttons);
+        wrap.append(ticket, right);
+        api.stage.appendChild(wrap);
+        let step = 0;
+        if (memory) setTimeout(() => ticket.classList.add('flipped'), lerp(6000, 3500, o.difficulty));
+        const mark = () => ticket.querySelectorAll('.ticket-line').forEach((l) => l.classList.toggle('done', Number(l.dataset.i) < step));
+        function add(name) {
+            if (name === steps[step]) {
+                step++;
+                plate.innerHTML += `<span class="chip-in">${esc(name)}</span>`;
+                mark();
+                if (step >= steps.length) api.finish({ success: true, quality: steps.length / (steps.length + api.mistakes * 1.5) });
+            } else {
+                plate.classList.remove('flash-bad'); void plate.offsetWidth; plate.classList.add('flash-bad');
+                api.mistake();
+            }
+        }
+    };
+
     // Open the page in a normal browser to try the games: ?game=nuts
     if (!RESOURCE) {
         const g = new URLSearchParams(location.search).get('game') || 'pump';
@@ -992,6 +1082,8 @@
                 order: [['red', 'dead_pos'], ['red', 'good_pos'], ['black', 'good_neg'], ['black', 'ground']],
             },
         };
+        demo.grill = { items: ['Carne asada', 'Chicken', 'Carne asada'] };
+        demo.assemble = { label: 'Taco', steps: ['Tortilla', 'Carne asada', 'Onion', 'Cilantro', 'Salsa'] };
         document.body.style.background = '#333';
         start({ id: 1, game: g, opts: Object.assign({ title: g, time: 0 }, demo[g] || {}) });
     }

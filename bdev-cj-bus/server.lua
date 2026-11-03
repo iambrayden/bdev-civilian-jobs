@@ -244,7 +244,7 @@ lib.callback.register('bdev-cj-bus:boardPlayer', function(src, netId)
     if not pairBonus[key] or os.time() - pairBonus[key] > 1200 then
         pairBonus[key] = os.time()
         SetTimeout(1100, function()
-            CivJobs.reward(driver, JOB, { pay = Config.Pay.playerBonus, xp = 3, label = 'Rider bonus', task = false })
+            CivJobs.reward(driver, JOB, { pay = Config.Pay.playerBonus, xp = 3, label = 'Rider bonus', task = false, playerWork = true })
         end)
     end
     CivJobs.notify(driver, 'A passenger boarded and paid their fare.', 'success', Config.Job.label)

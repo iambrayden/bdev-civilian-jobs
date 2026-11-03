@@ -31,7 +31,7 @@ Config.Job = {
     requests = {
         label = 'Locksmith',
         description = 'Locked out of your car or house, or need a spare car key?',
-        bonus = 100,
+        bonus = 250, -- extra the job pays the locksmith (x1.5 player-work boost, once per caller every 30 min)
         context = 'RequestContext',   -- client export in this resource (which house you're at)
         validate = 'ValidateRequest', -- server export in this resource (do you own it?)
         types = {
@@ -49,7 +49,7 @@ Config.Pay = {
     car = 220, house = 260, rekey = 340, safe = 380, key = 160,
     tipMax = 200,
     responseTarget = 240, -- seconds from call to first work for the full speed part of the tip
-    playerStep = 50,
+    playerStep = 125, -- (x1.5 player-work boost)
 }
 Config.XP = { step = 6, call = 10 }
 Config.MinStepSeconds = 6

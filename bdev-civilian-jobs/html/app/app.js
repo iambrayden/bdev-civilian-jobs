@@ -30,7 +30,7 @@
         if (s >= 60) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
         return `${s}s`;
     };
-    const ICONS = { 'file-contract': '📄', 'key': '🔑', wrench: '🔧', 'screwdriver-wrench': '🔧', bus: '🚌', key: '🔑', car: '🚗', 'car-side': '🚗', truck: '🚚', 'truck-pickup': '🛻', trash: '🗑️', box: '📦' };
+    const ICONS = { utensils: '🌮', 'file-contract': '📄', 'key': '🔑', wrench: '🔧', 'screwdriver-wrench': '🔧', bus: '🚌', key: '🔑', car: '🚗', 'car-side': '🚗', truck: '🚚', 'truck-pickup': '🛻', trash: '🗑️', box: '📦' };
     const icon = (name) => ICONS[name] || '💼';
 
     let toastTimer;

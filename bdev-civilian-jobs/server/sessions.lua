@@ -167,8 +167,9 @@ end
 -- Pay
 --------------------------------------------------------------------------------
 
---- Pays a worker for a finished task. opts = { pay, xp, label, task = true|false, raw = true }
---- `raw` skips the level bonus (used for money that came from another player).
+--- Pays a worker for a finished task. opts = { pay, xp, label, task = true|false, raw = true, playerWork = true }
+--- `raw` skips the level bonus and the cap (money that came from another player).
+--- `playerWork` = work done for a real player: pays Config.Requests.playerPayMultiplier more and skips the cap.
 function CJ.reward(src, jobId, opts, invoker)
     local s = CJ.Sessions[src]
     if not s or s.job ~= jobId then return 0 end
@@ -186,11 +187,13 @@ function CJ.reward(src, jobId, opts, invoker)
         s.lastReward = now
     end
 
-    local pay = math.max(0, math.floor((tonumber(opts.pay) or 0) * (opts.raw and 1.0 or CJ.payMultiplier(s.level))))
+    local mult = opts.raw and 1.0 or CJ.payMultiplier(s.level)
+    if opts.playerWork and not opts.raw then mult = mult * (Config.Requests.playerPayMultiplier or 1.0) end
+    local pay = math.max(0, math.floor((tonumber(opts.pay) or 0) * mult))
 
-    -- rolling hourly cap per player + job (does not apply to money paid by other players)
+    -- rolling hourly cap per player + job (not for money from other players or work done for them)
     local capped = false
-    if not opts.raw then
+    if not opts.raw and not opts.playerWork then
         earnings[s.citizenid] = earnings[s.citizenid] or {}
         local e = earnings[s.citizenid][jobId]
         if not e or os.time() - e.since >= 3600 then

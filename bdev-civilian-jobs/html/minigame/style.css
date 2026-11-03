@@ -210,3 +210,26 @@ canvas.jim { width: 100%; border-radius: 12px; border: 1px solid var(--border); 
 .pass-card .muted { color: #4b5568; }
 .pass-name { font-weight: 700; font-size: 15px; }
 .small { font-size: 12px; }
+
+/* ---------- grill ---------- */
+.grill { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;
+    padding: 12px; border-radius: 12px; background: repeating-linear-gradient(90deg, #1a1f2b 0 10px, #232a38 10px 14px); border: 1px solid var(--border); }
+.grill-item { padding: 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); cursor: pointer; }
+.grill-item:hover { border-color: var(--accent); }
+.grill-item.done { border-color: var(--good); cursor: default; opacity: .7; }
+.grill-name { font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.small-bar { height: 14px; }
+.grill-state { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ---------- assemble ---------- */
+.assemble { display: flex; gap: 14px; }
+.ticket { width: 170px; flex-shrink: 0; background: #f4efe1; color: #2b2b2b; border-radius: 6px; padding: 10px 12px; font-family: 'Courier New', monospace; font-size: 13px; transition: transform .3s; }
+.ticket.flipped .ticket-line { visibility: hidden; }
+.ticket.flipped::after { content: 'Ticket flipped. Build it from memory!'; display: block; font-size: 11px; color: #8a6d3b; }
+.ticket-head { font-weight: 700; border-bottom: 1px dashed #999; padding-bottom: 4px; margin-bottom: 6px; }
+.ticket-line.done { text-decoration: line-through; opacity: .5; }
+.assemble-right { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.plate { min-height: 40px; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); font-size: 12px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.chip-in { background: rgba(22, 199, 132, .18); color: #6ff0bd; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+.ingredients { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ingredient { padding: 9px 4px; font-size: 12px; }

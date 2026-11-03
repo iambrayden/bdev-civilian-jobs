@@ -35,7 +35,7 @@ Config.Job = {
         description = 'Flat tire, engine trouble, empty tank, body damage or rolled over? A mechanic comes to you.',
         price = 400,    -- paid by the caller to the player mechanic
         npcPrice = 650, -- nobody on duty: an NPC mechanic comes instead (set nil to disable)
-        bonus = 150,    -- extra the job pays the mechanic (once per caller every 30 min)
+        bonus = 300,    -- extra the job pays the mechanic (x1.5 player-work boost, once per caller every 30 min)
         needsVehicle = true,
     },
 }
@@ -50,7 +50,7 @@ Config.Pay = {
     tipMax = 250,
     responseTarget = 240, -- seconds from call to arrival for the full speed part of the tip
     -- Player calls: the caller's money + the job bonus above + this per problem
-    playerIssue = 60,
+    playerIssue = 150, -- (x1.5 player-work boost)
 }
 
 Config.XP = { issue = 6, call = 10 }

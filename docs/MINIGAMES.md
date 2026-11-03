@@ -28,6 +28,8 @@ The difficulty is eased by the player's level in the job they're working: `Confi
 | `dial` | A/D or mouse wheel to turn (right, left, right…), SPACE when the light clicks | `numbers` (2-4, default 3) | Safes |
 | `keycut` | ←/→ pick a cut, hold SPACE to grind it to match the original. Overcutting is a mistake | `cuts` (3-7, default 5) | Key copies, rekeying |
 | `change` | Click bills/coins to give the right change, ENTER to hand it over | `fares` (list), `count` (1) | Bus fares |
+| `grill` | Click each item when its bar is in the green. Too early is raw, too late is burnt and starts over | `items` (names, up to 6) | Food truck |
+| `assemble` | Click the ingredients in the order on the ticket. On hard, the ticket flips over and you build from memory | `steps`, `extra` (distractors), `label` | Food truck |
 | `pass` | Check a transit pass: date, zone, hologram, photo. A to accept, R to reject | `zone`, `today` (YYYY-MM-DD), `fakeChance` (0.35); returns `accepted` and `fake` | Bus passes |
 
 Try one in a browser: open `bdev-civilian-jobs/html/minigame/index.html?game=wiring`.
@@ -38,3 +40,4 @@ Try one in a browser: open `bdev-civilian-jobs/html/minigame/index.html?game=wir
 ![dial](screenshots/mg-dial.png)
 ![keycut](screenshots/mg-keycut.png)
 ![pass](screenshots/mg-pass.png)
+![grill](screenshots/mg-grill.png)

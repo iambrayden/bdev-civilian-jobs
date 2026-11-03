@@ -91,7 +91,7 @@ Config.Pay = {
     pass = 25,       -- valid pass accepted
     caught = 40,     -- fake pass caught
     playerFare = 25, -- what a real player pays to ride
-    playerBonus = 60, -- job bonus per real rider (once per rider per 20 min)
+    playerBonus = 200, -- job bonus per real rider (x1.5 player-work boost, once per rider per 20 min)
 }
 Config.XP = { stop = 4, route = 25, passenger = 1 }
 

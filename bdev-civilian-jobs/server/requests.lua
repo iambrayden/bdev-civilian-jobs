@@ -395,7 +395,7 @@ exports('CompleteRequest', function(id, opts)
         elseif bonus > 0 then
             pairBonus[key] = os.time()
         end
-        CJ.reward(worker, r.job, { pay = bonus, xp = opts.xp or 10, label = opts.label or 'service bonus' })
+        CJ.reward(worker, r.job, { pay = bonus, xp = opts.xp or 10, label = opts.label or 'service bonus', playerWork = true })
     else
         CJ.addMoney(worker, r.workerCid, Config.Payment.account, r.price, 'civjobs-request-' .. r.job)
     end
